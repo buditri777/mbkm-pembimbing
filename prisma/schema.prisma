@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  DOSEN
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  role          Role     @default(DOSEN)
+  isLecturer    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  mahasiswaList Mahasiswa[]
+  buktiList     Bukti[]
+}
+
+model Mahasiswa {
+  id        String   @id @default(cuid())
+  nim       String   @unique
+  nama      String
+  prodi     String
+  kelas     String
+  mitra     String
+  kota      String
+  zona      String
+  dosenNama String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dosen     User?    @relation(fields: [userId], references: [id])
+  userId    String?
+  buktiList Bukti[]
+
+  @@index([userId])
+}
+
+// Tipe: PENYERAHAN | SUPERVISI | PENARIKAN
+model Bukti {
+  id          String   @id @default(cuid())
+  tipe        String
+  judul       String
+  url         String
+  catatan     String?
+  tanggal     DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  mahasiswa   Mahasiswa @relation(fields: [mahasiswaId], references: [id])
+  mahasiswaId String
+
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+
+  @@index([mahasiswaId])
+  @@index([userId])
+}
