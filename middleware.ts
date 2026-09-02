@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 const PUBLIC_PATHS = ["/signin", "/api/auth"];
-const SUPERADMIN_PATHS = ["/superadmin", "/api/users", "/api/ploting", "/api/rekap-bukti"];
+const SUPERADMIN_PATHS = ["/superadmin", "/api/users", "/api/ploting", "/api/rekap-bukti", "/api/import-mahasiswa"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

@@ -19,6 +19,22 @@ type Rekap = {
   totalBukti: number; perTipe: Record<string, number>;
   terakhirUpload: string | null; sudahUpload: boolean;
 };
+type BarisImport = {
+  baris: number; nim: string; nama: string; prodi: string; kelas: string;
+  mitra: string; kota: string; zona: string; dosen: string; status: string; masalah: string[];
+};
+type BarisDilewati = { baris: number; nim: string; nama: string; status: string; alasan: string };
+type HasilImport = {
+  mode: "pratinjau" | "terapkan";
+  sheet: string; namaFile: string;
+  kolomTerbaca: string[]; kolomHilang: string[];
+  totalBaris: number; jumlahBaru: number; jumlahPerbarui: number; jumlahDitolak: number;
+  jumlahDilewati: number;
+  dosenTakDikenal: string[];
+  contohBaru: BarisImport[]; contohPerbarui: BarisImport[]; ditolak: BarisImport[];
+  dilewati: BarisDilewati[];
+  dibuat?: number; diperbarui?: number;
+};
 
 const ROLE_BADGE: Record<Role, string> = {
   SUPERADMIN: "bg-purple-100 text-purple-700",
@@ -27,23 +43,24 @@ const ROLE_BADGE: Record<Role, string> = {
 };
 
 export default function SuperadminClient({ sessionName }: { sessionName: string }) {
-  const [tab, setTab] = useState<"users" | "ploting" | "rekap">("users");
+  const [tab, setTab] = useState<"users" | "ploting" | "rekap" | "import">("users");
   const TAB_LABEL = {
     users: "Manajemen Pengguna",
     ploting: "Ploting Pembimbing",
     rekap: "Status Upload Bukti",
+    import: "Import Excel",
   } as const;
   return (
     <div className="min-h-screen bg-slate-100">
       <TopBar
         title="Panel Super Admin"
-        subtitle="Manajemen pengguna · ploting · status upload bukti"
+        subtitle="Pengguna · ploting · status bukti · import data"
         sessionName={sessionName}
         roleLabel="Super Admin"
       />
       <main className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6 inline-flex flex-wrap rounded-xl bg-white p-1 shadow-sm">
-          {(["users", "ploting", "rekap"] as const).map((t) => (
+          {(["users", "ploting", "rekap", "import"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -55,7 +72,15 @@ export default function SuperadminClient({ sessionName }: { sessionName: string 
             </button>
           ))}
         </div>
-        {tab === "users" ? <UsersPanel /> : tab === "ploting" ? <PlotingPanel /> : <RekapPanel />}
+        {tab === "users" ? (
+          <UsersPanel />
+        ) : tab === "ploting" ? (
+          <PlotingPanel />
+        ) : tab === "rekap" ? (
+          <RekapPanel />
+        ) : (
+          <ImportPanel />
+        )}
       </main>
     </div>
   );
@@ -550,6 +575,239 @@ function RekapPanel() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/* ---------------- Import Excel ---------------- */
+
+const LABEL_KOLOM: Record<string, string> = {
+  nim: "NIM", nama: "Nama", prodi: "Prodi", kelas: "Kelas",
+  mitra: "Perusahaan", kota: "Kota", zona: "Zona", dosen: "Dosen Pembimbing",
+  status: "Status MBKM",
+};
+
+function ImportPanel() {
+  const [file, setFile] = useState<File | null>(null);
+  const [hasil, setHasil] = useState<HasilImport | null>(null);
+  const [error, setError] = useState("");
+  const [sibuk, setSibuk] = useState(false);
+  const [lihat, setLihat] = useState<"baru" | "perbarui" | "ditolak" | "dilewati">("baru");
+
+  async function kirim(terapkan: boolean) {
+    if (!file) { setError("Pilih file Excel dulu."); return; }
+    setError(""); setSibuk(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    if (terapkan) fd.append("terapkan", "true");
+    const res = await fetch("/api/import-mahasiswa", { method: "POST", body: fd });
+    setSibuk(false);
+    const j = await res.json().catch(() => ({}));
+    if (res.ok) { setHasil(j); setLihat("baru"); }
+    else { setHasil(null); setError(j.error ?? "Gagal memproses file."); }
+  }
+
+  const sudahDiterapkan = hasil?.mode === "terapkan";
+  const daftar = hasil
+    ? lihat === "baru" ? hasil.contohBaru : lihat === "perbarui" ? hasil.contohPerbarui : hasil.ditolak
+    : [];
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-white p-6 shadow-sm">
+        <h2 className="mb-1 text-lg font-semibold text-slate-800">Import Data Mahasiswa dari Excel</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          Unggah file <b>.xlsx / .xls / .csv</b>. Baris dicocokkan berdasarkan <b>NIM</b> —
+          NIM yang sudah ada akan diperbarui, yang belum ada ditambahkan. Data tidak pernah dihapus.
+          Baris berstatus <b>Ditolak</b> dan <b>Menunggu Validasi</b> tidak diimpor, dan satu mahasiswa
+          hanya masuk sekali (dipilih status paling final).
+        </p>
+
+        <div className="mb-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
+          <div className="mb-1.5 font-semibold text-slate-700">Kolom yang dikenali</div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(LABEL_KOLOM).map(([k, v]) => (
+              <span key={k} className="rounded bg-white px-2 py-0.5 text-xs font-medium text-slate-700 shadow-sm">
+                {v}{k === "nim" || k === "nama" || k === "mitra" ? " *" : ""}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            * wajib. Urutan kolom bebas; baris judul di atas header tidak masalah (dicari sampai 10 baris pertama).
+            Nama dosen dicocokkan otomatis dengan akun yang ada — gelar diabaikan.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={(e) => { setFile(e.target.files?.[0] ?? null); setHasil(null); setError(""); }}
+            className="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-purple-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-purple-700 hover:file:bg-purple-100"
+          />
+          <button
+            onClick={() => kirim(false)}
+            disabled={sibuk || !file}
+            className="rounded-lg border border-purple-300 px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-50 disabled:opacity-40"
+          >
+            {sibuk ? "Memproses…" : "Pratinjau"}
+          </button>
+        </div>
+
+        {error && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
+      </div>
+
+      {hasil && (
+        <>
+          <div className="rounded-xl bg-white p-6 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-800">
+                  {sudahDiterapkan ? "Hasil Import" : "Pratinjau"} — {hasil.namaFile}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Sheet &quot;{hasil.sheet}&quot; · {hasil.totalBaris} baris terbaca
+                  {hasil.kolomHilang.length > 0 &&
+                    ` · kolom tidak ditemukan: ${hasil.kolomHilang.map((k) => LABEL_KOLOM[k] ?? k).join(", ")}`}
+                </p>
+              </div>
+              {!sudahDiterapkan && hasil.jumlahBaru + hasil.jumlahPerbarui > 0 && (
+                <button
+                  onClick={() => kirim(true)}
+                  disabled={sibuk}
+                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {sibuk ? "Menyimpan…" : `Terapkan ${hasil.jumlahBaru + hasil.jumlahPerbarui} baris`}
+                </button>
+              )}
+            </div>
+
+            {sudahDiterapkan && (
+              <div className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                Tersimpan: <b>{hasil.dibuat}</b> mahasiswa baru, <b>{hasil.diperbarui}</b> diperbarui.
+                {hasil.jumlahDitolak > 0 && ` ${hasil.jumlahDitolak} baris dilewati karena bermasalah.`}
+                {hasil.jumlahDilewati > 0 && ` ${hasil.jumlahDilewati} baris dilewati (status/duplikat).`}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <MiniStat label={sudahDiterapkan ? "Ditambahkan" : "Akan ditambahkan"} value={hasil.jumlahBaru} />
+              <MiniStat label={sudahDiterapkan ? "Diperbarui" : "Akan diperbarui"} value={hasil.jumlahPerbarui} />
+              <MiniStat label="Bermasalah" value={hasil.jumlahDitolak} warn={hasil.jumlahDitolak > 0} />
+              <MiniStat label="Dilewati (status/duplikat)" value={hasil.jumlahDilewati} />
+            </div>
+
+            {hasil.dosenTakDikenal.length > 0 && (
+              <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <b>{hasil.dosenTakDikenal.length} nama dosen belum punya akun</b> — datanya tetap masuk, tapi
+                mahasiswa belum terhubung ke dosen. Buat akunnya di tab Manajemen Pengguna, lalu tugaskan
+                lewat tab Ploting Pembimbing.
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {hasil.dosenTakDikenal.map((d) => (
+                    <span key={d} className="rounded bg-white px-2 py-0.5 text-xs font-medium text-amber-800 shadow-sm">{d}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl bg-white p-6 shadow-sm">
+            <div className="mb-3 inline-flex rounded-lg border border-slate-200 p-1">
+              {([
+                ["baru", `Baru (${hasil.jumlahBaru})`],
+                ["perbarui", `Diperbarui (${hasil.jumlahPerbarui})`],
+                ["ditolak", `Bermasalah (${hasil.jumlahDitolak})`],
+                ["dilewati", `Dilewati (${hasil.jumlahDilewati})`],
+              ] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setLihat(k)}
+                  className={`rounded px-3 py-1.5 text-sm font-medium transition ${
+                    lihat === k ? "bg-purple-600 text-white" : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {lihat === "dilewati" ? (
+              hasil.dilewati.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-400">Tidak ada baris yang dilewati.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Baris berikut sengaja tidak diimpor: status belum final (Ditolak / Menunggu Validasi),
+                    atau mahasiswa yang sama muncul lebih dari sekali — dipakai baris dengan status paling final.
+                  </p>
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2.5">Baris</th>
+                        <th className="px-3 py-2.5">NIM</th>
+                        <th className="px-3 py-2.5">Nama</th>
+                        <th className="px-3 py-2.5">Status</th>
+                        <th className="px-3 py-2.5">Alasan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {hasil.dilewati.map((r) => (
+                        <tr key={`${r.baris}-${r.nim}`} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 text-xs text-slate-400">{r.baris}</td>
+                          <td className="px-3 py-2 font-mono text-xs">{r.nim || "—"}</td>
+                          <td className="px-3 py-2 font-medium text-slate-800">{r.nama || "—"}</td>
+                          <td className="px-3 py-2 text-slate-600">{r.status || "—"}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{r.alasan}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : daftar.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">Tidak ada baris di kategori ini.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2.5">Baris</th>
+                      <th className="px-3 py-2.5">NIM</th>
+                      <th className="px-3 py-2.5">Nama</th>
+                      <th className="px-3 py-2.5">Perusahaan</th>
+                      <th className="px-3 py-2.5">Dosen</th>
+                      {lihat === "ditolak" && <th className="px-3 py-2.5">Masalah</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {daftar.map((r) => (
+                      <tr key={`${r.baris}-${r.nim}`} className="hover:bg-slate-50">
+                        <td className="px-3 py-2 text-xs text-slate-400">{r.baris}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{r.nim || "—"}</td>
+                        <td className="px-3 py-2 font-medium text-slate-800">{r.nama || "—"}</td>
+                        <td className="max-w-xs truncate px-3 py-2 text-slate-600" title={r.mitra}>{r.mitra || "—"}</td>
+                        <td className="px-3 py-2 text-slate-600">{r.dosen || "—"}</td>
+                        {lihat === "ditolak" && (
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap gap-1">
+                              {r.masalah.map((m) => (
+                                <span key={m} className="rounded bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">{m}</span>
+                              ))}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {lihat !== "ditolak" && daftar.length === 50 && (
+                  <p className="mt-2 text-xs text-slate-400">Menampilkan 50 baris pertama.</p>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
