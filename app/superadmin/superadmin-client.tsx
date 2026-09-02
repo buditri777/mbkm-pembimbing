@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import TopBar from "@/components/top-bar";
 import { ROLES, ROLE_LABEL, type Role } from "@/lib/roles";
 
@@ -13,6 +13,12 @@ type Mhs = {
   mitra: string; kota: string; dosenNama: string; userId: string | null;
 };
 type Dosen = { id: string; name: string; email: string; _count: { mahasiswaList: number } };
+type Rekap = {
+  id: string; nama: string; email: string;
+  jumlahMitra: number; mitraSudah: string[]; mitraBelum: string[];
+  totalBukti: number; perTipe: Record<string, number>;
+  terakhirUpload: string | null; sudahUpload: boolean;
+};
 
 const ROLE_BADGE: Record<Role, string> = {
   SUPERADMIN: "bg-purple-100 text-purple-700",
@@ -21,18 +27,23 @@ const ROLE_BADGE: Record<Role, string> = {
 };
 
 export default function SuperadminClient({ sessionName }: { sessionName: string }) {
-  const [tab, setTab] = useState<"users" | "ploting">("users");
+  const [tab, setTab] = useState<"users" | "ploting" | "rekap">("users");
+  const TAB_LABEL = {
+    users: "Manajemen Pengguna",
+    ploting: "Ploting Pembimbing",
+    rekap: "Status Upload Bukti",
+  } as const;
   return (
     <div className="min-h-screen bg-slate-100">
       <TopBar
         title="Panel Super Admin"
-        subtitle="Manajemen pengguna & ploting pembimbing"
+        subtitle="Manajemen pengguna · ploting · status upload bukti"
         sessionName={sessionName}
         roleLabel="Super Admin"
       />
       <main className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-6 inline-flex rounded-xl bg-white p-1 shadow-sm">
-          {(["users", "ploting"] as const).map((t) => (
+        <div className="mb-6 inline-flex flex-wrap rounded-xl bg-white p-1 shadow-sm">
+          {(["users", "ploting", "rekap"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -40,11 +51,11 @@ export default function SuperadminClient({ sessionName }: { sessionName: string 
                 tab === t ? "bg-purple-600 text-white" : "text-slate-600 hover:bg-slate-50"
               }`}
             >
-              {t === "users" ? "Manajemen Pengguna" : "Ploting Pembimbing"}
+              {TAB_LABEL[t]}
             </button>
           ))}
         </div>
-        {tab === "users" ? <UsersPanel /> : <PlotingPanel />}
+        {tab === "users" ? <UsersPanel /> : tab === "ploting" ? <PlotingPanel /> : <RekapPanel />}
       </main>
     </div>
   );
@@ -362,6 +373,182 @@ function PlotingPanel() {
             </tbody>
           </table>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Status Upload Bukti per Dosen ---------------- */
+
+function RekapPanel() {
+  const [rows, setRows] = useState<Rekap[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"semua" | "sudah" | "belum">("semua");
+  const [q, setQ] = useState("");
+  const [buka, setBuka] = useState<string>("");
+
+  useEffect(() => {
+    (async () => {
+      const r = await fetch("/api/rekap-bukti");
+      setRows(r.ok ? await r.json() : []);
+      setLoading(false);
+    })();
+  }, []);
+
+  const sudah = rows.filter((r) => r.sudahUpload).length;
+  const belum = rows.length - sudah;
+  const belumLengkap = rows.filter((r) => r.mitraBelum.length > 0).length;
+
+  const tampil = useMemo(() => {
+    return rows.filter((r) => {
+      if (filter === "sudah" && !r.sudahUpload) return false;
+      if (filter === "belum" && r.sudahUpload) return false;
+      if (q.trim() && !`${r.nama} ${r.email}`.toLowerCase().includes(q.toLowerCase())) return false;
+      return true;
+    });
+  }, [rows, filter, q]);
+
+  if (loading) return <p className="py-10 text-center text-sm text-slate-400">Memuat…</p>;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <MiniStat label="Total Dosen" value={rows.length} />
+        <MiniStat label="Sudah Upload" value={sudah} />
+        <MiniStat label="Belum Upload Sama Sekali" value={belum} warn={belum > 0} />
+        <MiniStat label="Ada Perusahaan Kosong" value={belumLengkap} warn={belumLengkap > 0} />
+      </div>
+
+      <div className="rounded-xl bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[220px] flex-1">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Cari dosen</label>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="nama / email…" className={inputCls} />
+          </div>
+          <div className="inline-flex rounded-lg border border-slate-200 p-1">
+            {(["semua", "sudah", "belum"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`rounded px-3 py-1.5 text-sm font-medium capitalize transition ${
+                  filter === f ? "bg-purple-600 text-white" : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {f === "semua" ? "Semua" : f === "sudah" ? "Sudah upload" : "Belum upload"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-3 py-3">Status</th>
+              <th className="px-3 py-3">Dosen</th>
+              <th className="px-3 py-3">Perusahaan</th>
+              <th className="px-3 py-3">Bukti</th>
+              <th className="px-3 py-3">Rincian Jenis</th>
+              <th className="px-3 py-3">Terakhir Upload</th>
+              <th className="px-3 py-3" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {tampil.length === 0 && (
+              <tr><td colSpan={7} className="py-8 text-center text-sm text-slate-400">Tidak ada data.</td></tr>
+            )}
+            {tampil.map((r) => (
+              <Fragment key={r.id}>
+                <tr className="hover:bg-slate-50">
+                  <td className="px-3 py-2.5">
+                    {r.sudahUpload ? (
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">Sudah</span>
+                    ) : (
+                      <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">Belum</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <div className="font-medium text-slate-800">{r.nama}</div>
+                    <div className="text-xs text-slate-500">{r.email}</div>
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-600">
+                    <span className="font-semibold text-slate-800">{r.mitraSudah.length}</span>
+                    <span className="text-slate-400"> / {r.jumlahMitra}</span>
+                    {r.mitraBelum.length > 0 && (
+                      <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                        {r.mitraBelum.length} kosong
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 font-semibold text-slate-800">{r.totalBukti}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex flex-wrap gap-1">
+                      {(["PENYERAHAN", "SUPERVISI", "PENARIKAN"] as const).map((t) => (
+                        <span
+                          key={t}
+                          className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                            r.perTipe[t] ? "bg-slate-100 text-slate-700" : "bg-slate-50 text-slate-400"
+                          }`}
+                          title={t}
+                        >
+                          {t.slice(0, 3)} {r.perTipe[t] ?? 0}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-slate-600">
+                    {r.terakhirUpload
+                      ? new Date(r.terakhirUpload).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })
+                      : "—"}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {r.jumlahMitra > 0 && (
+                      <button
+                        onClick={() => setBuka(buka === r.id ? "" : r.id)}
+                        className="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                      >
+                        {buka === r.id ? "Tutup" : "Rincian"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {buka === r.id && (
+                  <tr className="bg-slate-50">
+                    <td colSpan={7} className="px-6 py-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                            Sudah ada bukti ({r.mitraSudah.length})
+                          </div>
+                          {r.mitraSudah.length === 0 ? (
+                            <p className="text-xs text-slate-400">—</p>
+                          ) : (
+                            <ul className="space-y-1 text-xs text-slate-700">
+                              {r.mitraSudah.map((m) => <li key={m}>✓ {m}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                        <div>
+                          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                            Belum ada bukti ({r.mitraBelum.length})
+                          </div>
+                          {r.mitraBelum.length === 0 ? (
+                            <p className="text-xs text-slate-400">— semua lengkap</p>
+                          ) : (
+                            <ul className="space-y-1 text-xs text-slate-700">
+                              {r.mitraBelum.map((m) => <li key={m}>• {m}</li>)}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
