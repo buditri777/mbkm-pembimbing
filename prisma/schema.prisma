@@ -8,6 +8,7 @@ datasource db {
 }
 
 enum Role {
+  SUPERADMIN
   ADMIN
   DOSEN
 }
@@ -41,28 +42,26 @@ model Mahasiswa {
 
   dosen     User?    @relation(fields: [userId], references: [id])
   userId    String?
-  buktiList Bukti[]
 
   @@index([userId])
 }
 
+// Bukti dokumentasi per PERUSAHAAN (mitra), bukan per mahasiswa.
 // Tipe: PENYERAHAN | SUPERVISI | PENARIKAN
 model Bukti {
-  id          String   @id @default(cuid())
-  tipe        String
-  judul       String
-  url         String
-  catatan     String?
-  tanggal     DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  tipe      String
+  judul     String
+  url       String
+  catatan   String?
+  mitra     String
+  tanggal   DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  mahasiswa   Mahasiswa @relation(fields: [mahasiswaId], references: [id])
-  mahasiswaId String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
 
-  user        User      @relation(fields: [userId], references: [id])
-  userId      String
-
-  @@index([mahasiswaId])
+  @@index([mitra])
   @@index([userId])
 }

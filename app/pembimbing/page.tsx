@@ -1,6 +1,10 @@
 import { requireSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { isAdmin as isAdminRole, ROLE_LABEL, type Role } from "@/lib/roles";
+import TopBar from "@/components/top-bar";
 import Link from "next/link";
+
+export const dynamic = "force-dynamic";
 
 export default async function PembagianPage({
   searchParams,
@@ -10,38 +14,41 @@ export default async function PembagianPage({
   const session = await requireSession();
   const role = (session.user as { role?: string }).role;
   const userId = (session.user as { id?: string }).id;
-  const isAdmin = role === "ADMIN";
+  const isAdmin = isAdminRole(role);
 
-  const where = isAdmin ? {} : { userId };
   const q = searchParams.q?.trim();
-  if (q) {
-    if (isAdmin) {
-      Object.assign(where, {
+  const cari = q
+    ? {
         OR: [
           { nama: { contains: q } },
           { nim: { contains: q } },
           { mitra: { contains: q } },
           { dosenNama: { contains: q } },
         ],
-      });
-    } else {
-      Object.assign(where, { AND: [{ userId }, { OR: [{ nama: { contains: q } }, { nim: { contains: q } }, { mitra: { contains: q } }] }] });
-    }
-  }
+      }
+    : {};
+  const where = isAdmin ? cari : { AND: [{ userId }, cari] };
 
   const mahasiswa = await prisma.mahasiswa.findMany({
     where,
     orderBy: [{ dosenNama: "asc" }, { nama: "asc" }],
-    include: { _count: { select: { buktiList: true } } },
   });
 
-  // Rekap per dosen (admin only)
+  // Bukti dihitung per perusahaan, bukan per mahasiswa
+  const buktiPerMitra = await prisma.bukti.groupBy({ by: ["mitra"], _count: { mitra: true } });
+  const buktiCount = new Map(buktiPerMitra.map((b) => [b.mitra, b._count.mitra]));
+
   const rekap = new Map<string, number>();
   for (const m of mahasiswa) rekap.set(m.dosenNama, (rekap.get(m.dosenNama) ?? 0) + 1);
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <TopBar sessionName={session.user?.name ?? ""} role={role ?? ""} />
+      <TopBar
+        title="MBKM Pembimbing"
+        subtitle="TA 2026/2027"
+        sessionName={session.user?.name ?? ""}
+        roleLabel={ROLE_LABEL[(role as Role) ?? "DOSEN"]}
+      />
       <main className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-slate-800">
@@ -88,9 +95,9 @@ export default async function PembagianPage({
                 <th className="px-4 py-3">Nama</th>
                 <th className="px-4 py-3">Prodi</th>
                 <th className="px-4 py-3">Kelas</th>
-                <th className="px-4 py-3">Mitra</th>
+                <th className="px-4 py-3">Perusahaan</th>
                 <th className="px-4 py-3">Kota</th>
-                {!isAdmin && <th className="px-4 py-3">Bukti</th>}
+                <th className="px-4 py-3">Bukti Perusahaan</th>
                 {isAdmin && <th className="px-4 py-3">Dosen Pembimbing</th>}
               </tr>
             </thead>
@@ -103,15 +110,14 @@ export default async function PembagianPage({
                   <td className="px-4 py-2.5 text-slate-600">{m.kelas}</td>
                   <td className="max-w-xs truncate px-4 py-2.5 text-slate-600" title={m.mitra}>{m.mitra}</td>
                   <td className="px-4 py-2.5 text-slate-600">{m.kota}</td>
-                  {isAdmin ? (
+                  <td className="px-4 py-2.5">
+                    <Link href={`/bukti?mitra=${encodeURIComponent(m.mitra)}`} className="text-xs font-semibold text-blue-600 hover:underline">
+                      {buktiCount.get(m.mitra) ?? 0} bukti →
+                    </Link>
+                  </td>
+                  {isAdmin && (
                     <td className="px-4 py-2.5">
                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{m.dosenNama}</span>
-                    </td>
-                  ) : (
-                    <td className="px-4 py-2.5">
-                      <Link href={`/bukti?nim=${m.nim}`} className="text-xs font-semibold text-blue-600 hover:underline">
-                        {m._count.buktiList} bukti →
-                      </Link>
                     </td>
                   )}
                 </tr>
@@ -121,25 +127,5 @@ export default async function PembagianPage({
         </div>
       </main>
     </div>
-  );
-}
-
-function TopBar({ sessionName, role }: { sessionName: string; role: string }) {
-  return (
-    <header className="bg-white shadow-sm">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 font-bold text-white">M</div>
-          <div>
-            <div className="font-bold text-slate-800">MBKM Pembimbing</div>
-            <div className="text-xs text-slate-500">TA 2026/2027</div>
-          </div>
-        </Link>
-        <div className="text-right">
-          <div className="text-sm font-semibold text-slate-800">{sessionName}</div>
-          <div className="text-xs text-slate-500">{role === "ADMIN" ? "Admin" : "Dosen Pembimbing"}</div>
-        </div>
-      </div>
-    </header>
   );
 }
