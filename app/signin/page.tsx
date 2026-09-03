@@ -30,54 +30,71 @@ export default function SigninPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-900 to-slate-900 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-blue-600 text-2xl font-bold text-white">
-            M
+    <div className="container-xxl">
+      <div className="authentication-wrapper authentication-basic container-p-y py-4">
+        <div className="authentication-inner">
+          <div className="card">
+            <div className="card-body">
+              <div className="app-brand justify-content-center mb-4">
+                <a href="/dashboard" className="app-brand-link gap-2">
+                  <span className="app-brand-logo demo">
+                    <span className="text-primary fw-bold fs-2">M</span>
+                  </span>
+                  <span className="app-brand-text demo text-body fw-bold fs-4">MBKM 2026 UDB</span>
+                </a>
+              </div>
+              <h4 className="mb-2">Selamat Datang! 👋</h4>
+              <p className="mb-4">Silakan masuk ke akun pembimbing MBKM Anda.</p>
+
+              <form onSubmit={handleSubmit} className="mb-3">
+                <div className="mb-3 form-password-toggle">
+                  <label className="form-label" htmlFor="email">Email</label>
+                  <div className="input-group input-group-merge">
+                    <span className="input-group-text"><i className="bx bx-user" /></span>
+                    <input
+                      id="email"
+                      type="email"
+                      className="form-control"
+                      placeholder="nama@udb.ac.id"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <div className="mb-3 form-password-toggle">
+                  <div className="d-flex justify-content-between">
+                    <label className="form-label" htmlFor="password">Password</label>
+                  </div>
+                  <div className="input-group input-group-merge">
+                    <span className="input-group-text"><i className="bx bx-lock-alt" /></span>
+                    <input
+                      id="password"
+                      type="password"
+                      className="form-control"
+                      placeholder="&#183;&#183;&#183;&#183;&#183;&#183;&#183;&#183;"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                    <span className="input-group-text cursor-pointer"><i className="bx bx-hide" /></span>
+                  </div>
+                </div>
+                {error && <div className="alert alert-danger py-2">{error}</div>}
+                <div className="mb-3">
+                  <button className="btn btn-primary d-grid w-100" type="submit" disabled={loading}>
+                    {loading ? "Memproses…" : "Masuk"}
+                  </button>
+                </div>
+              </form>
+
+              <p className="text-center mb-0">
+                <span className="text-muted">Universitas Duta Bangsa — TA 2026/2027</span>
+              </p>
+            </div>
           </div>
-          <h1 className="text-xl font-bold text-slate-800">MBKM Pembimbing</h1>
-          <p className="mt-1 text-sm text-slate-500">Universitas Duta Bangsa — TA 2026/2027</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="nama@udb.ac.id"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-            />
-          </div>
-          {error && (
-            <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
-          )}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Memproses…" : "Masuk"}
-          </button>
-        </form>
       </div>
     </div>
   );
