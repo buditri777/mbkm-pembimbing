@@ -266,6 +266,7 @@ function PlotingPanel() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [targetDosen, setTargetDosen] = useState("");
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -288,6 +289,15 @@ function PlotingPanel() {
       `${m.nim} ${m.nama} ${m.mitra} ${m.dosenNama} ${m.prodi}`.toLowerCase().includes(s)
     );
   }, [mahasiswa, q]);
+
+  const PER_PAGE = 25;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const pageSafe = Math.min(page, totalPages);
+  const paged = useMemo(
+    () => filtered.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE),
+    [filtered, pageSafe]
+  );
+  useEffect(() => { setPage(1); }, [q]);
 
   const belumPlot = mahasiswa.filter((m) => !m.userId).length;
 
@@ -389,7 +399,7 @@ function PlotingPanel() {
                 </tr>
               </thead>
               <tbody className="table-border-bottom-0">
-                {filtered.map((m) => (
+                {paged.map((m) => (
                   <tr key={m.id} className={selected.has(m.id) ? "table-active" : ""}>
                     <td>
                       <input className="form-check-input" type="checkbox" checked={selected.has(m.id)} onChange={() => toggle(m.id)} />
@@ -411,6 +421,29 @@ function PlotingPanel() {
             </table>
           )}
         </div>
+        {!loading && totalPages > 1 && (
+          <div className="card-footer d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <small className="text-body-secondary">
+              {filtered.length} mhs — halaman {pageSafe}/{totalPages}
+            </small>
+            <div className="btn-group btn-group-sm">
+              <button
+                className="btn btn-outline-secondary"
+                disabled={pageSafe <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <i className="bx bx-chevron-left" />
+              </button>
+              <button
+                className="btn btn-outline-secondary"
+                disabled={pageSafe >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <i className="bx bx-chevron-right" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
